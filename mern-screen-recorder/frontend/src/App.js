@@ -17,17 +17,17 @@ function App() {
   const timerRef = useRef(null);
   const videoPreviewRef = useRef(null);
 
-  // Fetch recordings on component mount
+  
   useEffect(() => {
     fetchRecordings();
   }, []);
 
-  // Handle timer
+ 
   useEffect(() => {
     if (recording) {
       timerRef.current = setInterval(() => {
         setTimer(prev => {
-          if (prev >= 179) { // 3 minutes minus 1 second
+          if (prev >= 179) { 
             handleStopRecording();
             setMaxTimeReached(true);
             return 180;
@@ -53,13 +53,13 @@ function App() {
 
   const startRecording = async () => {
     try {
-      // Reset states
+     
       setRecordedChunks([]);
       setRecordedVideo(null);
       setTimer(0);
       setMaxTimeReached(false);
 
-      // Get display media (screen) and audio
+     
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: { mediaSource: 'screen' }
       });
@@ -68,7 +68,7 @@ function App() {
         audio: true
       });
 
-      // Combine streams
+     
       const combinedStream = new MediaStream([
         ...displayStream.getVideoTracks(),
         ...audioStream.getAudioTracks()
@@ -76,7 +76,7 @@ function App() {
 
       streamRef.current = combinedStream;
 
-      // Setup media recorder
+     
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: 'video/webm;codecs=vp9,opus'
       });
@@ -96,15 +96,15 @@ function App() {
         setRecordedChunks(chunks);
         setRecordedVideo(videoUrl);
         
-        // Clean up streams
+       
         streamRef.current.getTracks().forEach(track => track.stop());
       };
 
-      // Start recording
-      mediaRecorder.start(1000); // Capture chunks every second
+      
+      mediaRecorder.start(1000); 
       setRecording(true);
 
-      // Handle if user stops sharing screen
+      
       displayStream.getVideoTracks()[0].onended = () => {
         if (mediaRecorder.state === 'recording') {
           handleStopRecording();
@@ -151,7 +151,7 @@ function App() {
       });
       
       alert('Recording uploaded successfully!');
-      fetchRecordings(); // Refresh the list
+      fetchRecordings(); 
     } catch (error) {
       console.error('Error uploading recording:', error);
       alert('Error uploading recording. Please try again.');
@@ -169,7 +169,7 @@ function App() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold text-center mb-8 text-blue-600">Screen Recorder</h1>
         
-        {/* Recording Controls */}
+        {}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="flex flex-col items-center space-y-4">
             <div className="text-2xl font-mono mb-2">
@@ -203,7 +203,7 @@ function App() {
           </div>
         </div>
         
-        {/* Video Preview */}
+        {}
         {recordedVideo && (
           <div className="bg-white rounded-lg shadow-md p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">Recording Preview</h2>
@@ -232,7 +232,7 @@ function App() {
           </div>
         )}
         
-        {/* Recordings List */}
+        {}
         <div className="bg-white rounded-lg shadow-md p-6">
           <h2 className="text-xl font-semibold mb-4">Uploaded Recordings</h2>
           {recordingsList.length === 0 ? (

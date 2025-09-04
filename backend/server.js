@@ -8,19 +8,19 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Initialize SQLite database
+
 const db = new sqlite3.Database('database.db', (err) => {
   if (err) {
     console.error('Error opening database:', err);
   } else {
     console.log('Connected to SQLite database');
     
-    // Create recordings table if it doesn't exist
+    
     db.run(`CREATE TABLE IF NOT EXISTS recordings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       filename TEXT NOT NULL,
@@ -31,7 +31,7 @@ const db = new sqlite3.Database('database.db', (err) => {
   }
 });
 
-// Configure multer for file uploads
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = 'uploads';
@@ -49,13 +49,13 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB limit
+    fileSize: 50 * 1024 * 1024 
   }
 });
 
-// API Routes
 
-// Upload recording
+
+
 app.post('/api/recordings', upload.single('video'), (req, res) => {
   try {
     if (!req.file) {
@@ -64,7 +64,7 @@ app.post('/api/recordings', upload.single('video'), (req, res) => {
 
     const { filename, path: filepath, size: filesize } = req.file;
     
-    // Store metadata in database
+   
     const sql = `INSERT INTO recordings (filename, filepath, filesize) VALUES (?, ?, ?)`;
     db.run(sql, [filename, filepath, filesize], function(err) {
       if (err) {
@@ -89,7 +89,7 @@ app.post('/api/recordings', upload.single('video'), (req, res) => {
   }
 });
 
-// Get all recordings
+
 app.get('/api/recordings', (req, res) => {
   const sql = `SELECT * FROM recordings ORDER BY createdAt DESC`;
   
@@ -103,7 +103,7 @@ app.get('/api/recordings', (req, res) => {
   });
 });
 
-// Get specific recording
+
 app.get('/api/recordings/:id', (req, res) => {
   const { id } = req.params;
   const sql = `SELECT * FROM recordings WHERE id = ?`;
@@ -118,18 +118,18 @@ app.get('/api/recordings/:id', (req, res) => {
       return res.status(404).json({ error: 'Recording not found' });
     }
     
-    // Check if file exists
+    
     if (!fs.existsSync(row.filepath)) {
       return res.status(404).json({ error: 'Recording file not found' });
     }
     
-    // Stream the video file
+    
     const stat = fs.statSync(row.filepath);
     const fileSize = stat.size;
     const range = req.headers.range;
     
     if (range) {
-      // Handle range requests for video streaming
+      
       const parts = range.replace(/bytes=/, "").split("-");
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
@@ -154,7 +154,7 @@ app.get('/api/recordings/:id', (req, res) => {
   });
 });
 
-// Start server
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
