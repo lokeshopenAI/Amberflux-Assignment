@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
@@ -14,22 +14,35 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 
-const db = new sqlite3.Database('database.db', (err) => {
-  if (err) {
-    console.error('Error opening database:', err);
-  } else {
-    console.log('Connected to SQLite database');
-    
-    
-    db.run(`CREATE TABLE IF NOT EXISTS recordings (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      filename TEXT NOT NULL,
-      filepath TEXT NOT NULL,
-      filesize INTEGER NOT NULL,
-      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-  }
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
+
+
+async function initializeDatabase() {
+  try {
+    const client = await pool.connect();
+    
+    
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS recordings (
+        id SERIAL PRIMARY KEY,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        filesize INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    client.release();
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Error initializing database:', err);
+  }
+}
+
+initializeDatabase();
 
 
 const storage = multer.diskStorage({
@@ -56,7 +69,7 @@ const upload = multer({
 
 
 
-app.post('/api/recordings', upload.single('video'), (req, res) => {
+app.post('/api/recordings', upload.single('video'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -64,24 +77,13 @@ app.post('/api/recordings', upload.single('video'), (req, res) => {
 
     const { filename, path: filepath, size: filesize } = req.file;
     
-   
-    const sql = `INSERT INTO recordings (filename, filepath, filesize) VALUES (?, ?, ?)`;
-    db.run(sql, [filename, filepath, filesize], function(err) {
-      if (err) {
-        console.error('Database error:', err);
-        return res.status(500).json({ error: 'Failed to save recording metadata' });
-      }
-      
-      res.status(201).json({ 
-        message: 'Recording uploaded successfully', 
-        recording: {
-          id: this.lastID,
-          filename,
-          filepath,
-          filesize,
-          createdAt: new Date().toISOString()
-        }
-      });
+    
+    const sql = `INSERT INTO recordings (filename, filepath, filesize) VALUES ($1, $2, $3) RETURNING *`;
+    const result = await pool.query(sql, [filename, filepath, filesize]);
+    
+    res.status(201).json({ 
+      message: 'Recording uploaded successfully', 
+      recording: result.rows[0]
     });
   } catch (error) {
     console.error('Upload error:', error);
@@ -90,41 +92,37 @@ app.post('/api/recordings', upload.single('video'), (req, res) => {
 });
 
 
-app.get('/api/recordings', (req, res) => {
-  const sql = `SELECT * FROM recordings ORDER BY createdAt DESC`;
-  
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to fetch recordings' });
-    }
-    
-    res.json(rows);
-  });
+app.get('/api/recordings', async (req, res) => {
+  try {
+    const sql = `SELECT * FROM recordings ORDER BY created_at DESC`;
+    const result = await pool.query(sql);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch recordings' });
+  }
 });
 
 
-app.get('/api/recordings/:id', (req, res) => {
-  const { id } = req.params;
-  const sql = `SELECT * FROM recordings WHERE id = ?`;
-  
-  db.get(sql, [id], (err, row) => {
-    if (err) {
-      console.error('Database error:', err);
-      return res.status(500).json({ error: 'Failed to fetch recording' });
-    }
+app.get('/api/recordings/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const sql = `SELECT * FROM recordings WHERE id = $1`;
+    const result = await pool.query(sql, [id]);
     
-    if (!row) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Recording not found' });
     }
     
+    const recording = result.rows[0];
     
-    if (!fs.existsSync(row.filepath)) {
+    
+    if (!fs.existsSync(recording.filepath)) {
       return res.status(404).json({ error: 'Recording file not found' });
     }
     
-    
-    const stat = fs.statSync(row.filepath);
+  
+    const stat = fs.statSync(recording.filepath);
     const fileSize = stat.size;
     const range = req.headers.range;
     
@@ -134,7 +132,7 @@ app.get('/api/recordings/:id', (req, res) => {
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       const chunksize = (end - start) + 1;
-      const file = fs.createReadStream(row.filepath, { start, end });
+      const file = fs.createReadStream(recording.filepath, { start, end });
       const head = {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
@@ -149,9 +147,17 @@ app.get('/api/recordings/:id', (req, res) => {
         'Content-Type': 'video/webm',
       };
       res.writeHead(200, head);
-      fs.createReadStream(row.filepath).pipe(res);
+      fs.createReadStream(recording.filepath).pipe(res);
     }
-  });
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ error: 'Failed to fetch recording' });
+  }
+});
+
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
 
 
